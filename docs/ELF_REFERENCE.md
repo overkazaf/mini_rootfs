@@ -284,9 +284,107 @@ xxd libdemo.so | head -20
 
 ---
 
+## 11. 进阶：libhybris 与跨运行时调用
+
+### 什么是 libhybris
+
+[libhybris](https://github.com/libhybris/libhybris) 是一个兼容层，允许在 GNU/Linux 系统上运行 Android 的 Bionic 库（如 GPU 驱动）。
+
+**核心问题**：Android 使用 Bionic libc，与 GNU glibc 不兼容。直接加载 Android .so 会因为 libc 符号不匹配而崩溃。
+
+**解决方案**：
+```
++----------------+     +----------------+     +----------------+
+|  Linux 应用    | --> |   libhybris    | --> | Android .so    |
+|  (glibc)       |     |   (符号转换)    |     | (Bionic)       |
++----------------+     +----------------+     +----------------+
+```
+
+libhybris 的核心技术：
+1. **自定义 linker**：不使用系统 ld.so，而是用自己的加载器
+2. **符号 hook**：拦截 Bionic 符号，转发到 glibc 实现
+3. **TLS 兼容**：处理线程本地存储的差异
+4. **Android linker 移植**：直接移植 Android 的 linker 代码
+
+### 学习路径
+
+```
+Level 1: 基础 (本项目)
+├── 理解 ELF 文件格式
+├── 实现简单的 dlopen/dlsym
+├── 理解重定位机制
+└── 调用 constructor/destructor
+
+        ↓
+
+Level 2: 符号解析进阶
+├── 实现完整的 GNU hash 查找
+├── 处理符号版本 (Symbol Versioning)
+├── 实现 RTLD_NEXT/RTLD_DEFAULT
+└── 支持 LD_PRELOAD 机制
+
+        ↓
+
+Level 3: 依赖处理
+├── 递归加载依赖库 (DT_NEEDED)
+├── 实现库搜索路径 (DT_RUNPATH)
+├── 处理循环依赖
+└── 实现引用计数和卸载
+
+        ↓
+
+Level 4: 高级特性
+├── 延迟绑定 (Lazy Binding / PLT)
+├── TLS 支持 (Thread Local Storage)
+├── GNU RELRO 保护
+├── IFUNC 解析
+└── 审计接口 (LD_AUDIT)
+
+        ↓
+
+Level 5: 跨运行时 (libhybris 级别)
+├── 符号 hook 与转发
+├── 多 libc 共存
+├── ABI 兼容层
+└── 系统调用兼容
+```
+
+### 推荐学习资源
+
+| 资源 | 说明 |
+|------|------|
+| [libhybris 源码](https://github.com/libhybris/libhybris) | 学习跨运行时实现 |
+| [Android linker 源码](https://android.googlesource.com/platform/bionic/+/refs/heads/main/linker/) | Android 官方 linker 实现 |
+| [glibc ld.so 源码](https://sourceware.org/git/?p=glibc.git;a=tree;f=elf) | GNU 动态链接器实现 |
+| [musl libc](https://musl.libc.org/) | 简洁的 libc 实现，linker 代码易读 |
+| [How To Write Shared Libraries](https://www.akkadia.org/drepper/dsohowto.pdf) | Ulrich Drepper 的经典文档 |
+
+### 实践项目建议
+
+1. **扩展本项目**
+   - 添加依赖库递归加载
+   - 实现 GNU hash 查找
+   - 支持多架构 (x86, ARM)
+
+2. **实现 LD_PRELOAD**
+   - 函数 hook 机制
+   - 符号覆盖
+
+3. **简化版 libhybris**
+   - 加载 Android .so
+   - 实现基础符号转换
+
+4. **研究 Wine/Proton**
+   - 类似的跨 ABI 兼容层
+   - PE/ELF 混合加载
+
+---
+
 ## 参考资料
 
 - [ELF Specification](https://refspecs.linuxfoundation.org/elf/elf.pdf)
 - [System V ABI - AMD64](https://refspecs.linuxbase.org/elf/x86_64-abi-0.99.pdf)
+- [libhybris GitHub](https://github.com/libhybris/libhybris)
+- [Android Bionic linker](https://android.googlesource.com/platform/bionic/+/refs/heads/main/linker/)
 - `man elf` - Linux ELF 手册
 - `/usr/include/elf.h` - ELF 头文件定义
