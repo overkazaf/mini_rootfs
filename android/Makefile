@@ -52,25 +52,26 @@ ROOTFS_DIR = android
 # $(OUT_DIR) 引用了上面定义的 OUT_DIR 变量
 # 这展示了变量可以嵌套引用
 OUT_DIR = out
-NATIVE_OUT = $(OUT_DIR)/native      # 展开后为: out/native
-ANDROID_OUT = $(OUT_DIR)/android    # 展开后为: out/android
+# 注意: 变量值后面不能有空格，否则会被包含在值里！
+NATIVE_OUT = $(OUT_DIR)/native
+ANDROID_OUT = $(OUT_DIR)/android
 
 # 源文件路径
 # 通过组合变量来构建完整路径
-DEMO_SRC = $(SRC_DIR)/demo.c        # 展开后为: src/demo.c
-DEMO2_SRC = $(SRC_DIR)/demo2.c      # 展开后为: src/demo2.c
-MAIN_SRC = $(SRC_DIR)/main.c        # 展开后为: src/main.c
+DEMO_SRC = $(SRC_DIR)/demo.c
+DEMO2_SRC = $(SRC_DIR)/demo2.c
+MAIN_SRC = $(SRC_DIR)/main.c
 
 # ============================================================================
 # 本地编译配置 (用于快速测试)
 # ============================================================================
 
-NATIVE_CC = gcc                     # 本地编译器
-NATIVE_CFLAGS = -Wall -fPIC         # 编译选项:
-                                    #   -Wall: 开启所有警告
-                                    #   -fPIC: 生成位置无关代码 (共享库必需)
-NATIVE_LDFLAGS = -ldl               # 链接选项:
-                                    #   -ldl: 链接动态加载库 (用于 dlopen 等)
+# 本地编译器
+NATIVE_CC = gcc
+# 编译选项: -Wall 开启所有警告, -fPIC 生成位置无关代码 (共享库必需)
+NATIVE_CFLAGS = -Wall -fPIC
+# 链接选项: -ldl 链接动态加载库 (用于 dlopen 等)
+NATIVE_LDFLAGS = -ldl
 
 # ============================================================================
 # Android NDK 交叉编译配置
@@ -134,7 +135,8 @@ TOOLCHAIN = $(NDK_PATH)/toolchains/llvm/prebuilt/darwin-x86_64
 ANDROID_CC = $(TOOLCHAIN)/bin/$(ANDROID_TARGET)$(ANDROID_API)-clang
 
 # Android 编译选项
-ANDROID_CFLAGS = -Wall -fPIC -DANDROID   # -DANDROID: 定义 ANDROID 宏
+# -DANDROID: 定义 ANDROID 宏
+ANDROID_CFLAGS = -Wall -fPIC -DANDROID
 ANDROID_LDFLAGS = -ldl
 
 # ============================================================================
