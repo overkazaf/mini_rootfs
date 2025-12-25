@@ -1,0 +1,93 @@
+@startuml symbol_resolution
+!theme plain
+skinparam backgroundColor #FEFEFE
+
+title 符号查找算法 (Symbol Resolution)
+
+start
+
+:linker_find_symbol(soinfo, name);
+
+if (soinfo 有效?) then (否)
+    :返回 NULL;
+    stop
+else (是)
+endif
+
+if (有 GNU Hash 表?) then (是)
+    partition "GNU Hash 查找" {
+        :计算 GNU hash 值;
+        :h = 5381;
+        :h = h * 33 + c (循环);
+
+        :Bloom Filter 检查;
+        note right
+          使用 Bloom Filter 快速排除
+          不存在的符号
+        end note
+
+        if (Bloom Filter 命中?) then (否)
+            :跳转到 ELF Hash;
+        else (是)
+        endif
+
+        :查找 bucket[hash % nbuckets];
+
+        while (遍历 chain) is (继续)
+            :比较 hash 高 31 位;
+            if (hash 匹配 && 名称相同?) then (是)
+                :返回符号地址;
+                stop
+            else (否)
+            endif
+            if (链结束?) then (是)
+                break
+            else (否)
+            endif
+        endwhile
+    }
+else (否)
+endif
+
+if (有 ELF Hash 表?) then (是)
+    partition "ELF Hash 查找" {
+        :计算 ELF hash 值;
+        note right
+          h = (h << 4) + c
+          h ^= (h & 0xf0000000) >> 24
+          h &= ~0xf0000000
+        end note
+
+        :查找 bucket[hash % nbucket];
+
+        while (遍历 chain) is (继续)
+            if (符号名匹配?) then (是)
+                if (符号已定义 && GLOBAL/WEAK?) then (是)
+                    :返回 load_bias + st_value;
+                    stop
+                else (否)
+                endif
+            else (否)
+            endif
+        endwhile
+    }
+else (否)
+endif
+
+partition "线性查找 (后备)" {
+    :遍历符号表;
+    while (i < symbol_count) is (继续)
+        if (名称匹配 && 已定义?) then (是)
+            :返回符号地址;
+            stop
+        else (否)
+        endif
+        :i++;
+    endwhile
+}
+
+:返回 NULL (未找到);
+
+stop
+
+@enduml

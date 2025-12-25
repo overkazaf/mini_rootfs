@@ -1,0 +1,59 @@
+@startuml relocation_types
+!theme plain
+skinparam backgroundColor #FEFEFE
+
+title x86_64 重定位类型处理
+
+rectangle "重定位入口\n(do_reloc)" as entry
+
+rectangle "R_X86_64_NONE\n(Type 0)\n无操作" as r_none #LightGray
+
+rectangle "R_X86_64_64\n(Type 1)\n绝对地址重定位" as r_64 #LightGreen
+note right of r_64
+  公式: S + A
+  *reloc_addr = sym_addr + addend
+end note
+
+rectangle "R_X86_64_GLOB_DAT\n(Type 6)\nGOT 表项填充" as r_glob_dat #LightBlue
+note right of r_glob_dat
+  公式: S
+  *reloc_addr = sym_addr
+  用于全局变量引用
+end note
+
+rectangle "R_X86_64_JUMP_SLOT\n(Type 7)\nPLT 表项填充" as r_jump_slot #LightBlue
+note right of r_jump_slot
+  公式: S
+  *reloc_addr = sym_addr
+  用于函数调用
+end note
+
+rectangle "R_X86_64_RELATIVE\n(Type 8)\n相对地址重定位" as r_relative #LightYellow
+note right of r_relative
+  公式: B + A
+  *reloc_addr = load_bias + addend
+  无需符号查找
+end note
+
+rectangle "R_X86_64_COPY\n(Type 5)\n符号复制" as r_copy #LightPink
+note right of r_copy
+  用于可执行文件
+  从共享库复制数据
+  memcpy(reloc, sym, size)
+end note
+
+entry --> r_none
+entry --> r_64
+entry --> r_glob_dat
+entry --> r_jump_slot
+entry --> r_relative
+entry --> r_copy
+
+note bottom of entry
+  **符号说明:**
+  S = Symbol address (符号地址)
+  A = Addend (加数，来自 r_addend)
+  B = Base address / Load bias (加载基址)
+end note
+
+@enduml

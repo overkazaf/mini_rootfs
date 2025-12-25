@@ -1,0 +1,102 @@
+@startuml soinfo_structure
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam classAttributeIconSize 0
+
+title 核心数据结构
+
+class soinfo_t {
+    .. 标识信息 ..
+    - name[256]: char
+    --
+    .. 加载信息 ..
+    - base: void*
+    - size: size_t
+    - load_bias: void*
+    --
+    .. ELF 结构 ..
+    - phdr: Elf64_Phdr*
+    - phnum: size_t
+    - dynamic: Elf64_Dyn*
+    --
+    .. 符号表 ..
+    - symtab: Elf64_Sym*
+    - strtab: const char*
+    - strtab_size: size_t
+    --
+    .. 哈希表 ..
+    - hash: uint32_t*
+    - gnu_hash: uint32_t*
+    --
+    .. 重定位 ..
+    - rela: Elf64_Rela*
+    - rela_count: size_t
+    - plt_rela: Elf64_Rela*
+    - plt_rela_count: size_t
+    --
+    .. 初始化/析构 ..
+    - init_func: void(*)()
+    - fini_func: void(*)()
+    - init_array: void(**)()
+    - init_array_count: size_t
+    - fini_array: void(**)()
+    - fini_array_count: size_t
+    --
+    .. 链表管理 ..
+    - ref_count: int
+    - next: soinfo_t*
+}
+
+class elf_file_t {
+    - fd: int
+    - map_start: void*
+    - map_size: size_t
+    - ehdr: Elf64_Ehdr*
+    - phdr: Elf64_Phdr*
+    - shdr: Elf64_Shdr*
+    - shstrtab: const char*
+}
+
+class linker_state_t {
+    - soinfo_list: soinfo_t*
+    - error_msg[512]: char
+    - has_error: bool
+}
+
+class "Elf64_Sym" as Elf64_Sym {
+    st_name: uint32_t
+    st_info: unsigned char
+    st_other: unsigned char
+    st_shndx: uint16_t
+    st_value: Elf64_Addr
+    st_size: uint64_t
+}
+
+class "Elf64_Rela" as Elf64_Rela {
+    r_offset: Elf64_Addr
+    r_info: uint64_t
+    r_addend: int64_t
+}
+
+class "Elf64_Dyn" as Elf64_Dyn {
+    d_tag: int64_t
+    d_val / d_ptr: union
+}
+
+linker_state_t "1" --> "*" soinfo_t : soinfo_list
+soinfo_t --> soinfo_t : next
+soinfo_t --> "n" Elf64_Sym : symtab
+soinfo_t --> "n" Elf64_Rela : rela / plt_rela
+soinfo_t --> "n" Elf64_Dyn : dynamic
+
+note bottom of soinfo_t
+  soinfo_t 模仿 Android Bionic linker 的 soinfo 结构
+  包含加载共享库所需的所有元数据
+end note
+
+note bottom of elf_file_t
+  用于解析阶段的临时结构
+  保存 mmap 的 ELF 文件视图
+end note
+
+@enduml

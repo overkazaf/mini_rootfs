@@ -1,0 +1,88 @@
+@startuml fairplay_integration
+!theme plain
+skinparam backgroundColor #FEFEFE
+
+title AM FairPlay DRM 流式解密架构
+
+package "Mini Rootfs 模拟环境" {
+    [Loader\n(主程序)] as loader
+
+    folder "lib/" {
+        [libstoreservicescore.so\n(登录鉴权)] as storeservices
+        [libandroidappmusic.so\n(DRM 解密)] as appmusic
+    }
+
+    package "模拟层" {
+        [JNI 环境模拟] as jni_mock
+        [C++ STL 兼容] as stl_compat
+        [系统属性模拟] as prop_mock
+    }
+
+}
+
+package "libandroidappmusic.so 关键接口" {
+    rectangle "SVFootHillSessionCtrl" as session_ctrl {
+        [instance()] as fn_instance
+        [getPersistentKey()] as fn_getkey
+        [decryptContext()] as fn_context
+    }
+    rectangle "SVFootHillPContext" as pcontext {
+        [kdContext()] as fn_kdcontext
+    }
+    rectangle "解密函数" as decrypt_fn {
+        [NfcRKVnxuKZy04KWbdFu***\n(样本解密)] as fn_decrypt
+    }
+}
+
+package "外部依赖" {
+    [libc.so] as libc
+    [libcrypto.so\n(OpenSSL)] as crypto
+    [libstdc++.so] as stdcpp
+}
+
+cloud "AM 后端服务" as apple_server
+file "加密 HLS 流\n(m3u8 + ts)" as hls_stream
+file "解密后 ALAC 样本" as output_samples
+
+' 加载关系
+loader --> storeservices : 1. mini_dlopen()
+loader --> appmusic : 2. mini_dlopen()
+
+' SO 依赖
+storeservices --> libc
+storeservices --> crypto
+appmusic --> storeservices
+appmusic --> crypto
+appmusic --> stdcpp
+
+' 模拟层
+appmusic ..> jni_mock
+appmusic ..> stl_compat
+loader ..> prop_mock
+
+' 解密流程
+apple_server --> storeservices : 登录认证
+apple_server --> hls_stream : 提供加密流
+
+fn_instance --> fn_getkey : 初始化后
+fn_getkey --> fn_context : 密钥获取后
+fn_context --> fn_kdcontext : 上下文创建后
+fn_kdcontext --> fn_decrypt : 准备解密
+
+hls_stream --> fn_decrypt : 加密 ALAC 样本
+fn_decrypt --> output_samples : 解密输出
+
+note right of session_ctrl
+  **SVFootHillSessionCtrl**
+  FairPlay 解密会话管理器
+  - 单例模式
+  - 管理密钥生命周期
+end note
+
+note right of fn_decrypt
+  **核心解密函数**
+  输入: kdContext + 加密样本
+  输出: 裸 ALAC 音频数据
+end note
+
+@enduml

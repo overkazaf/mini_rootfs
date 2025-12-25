@@ -1,0 +1,109 @@
+@startuml dlopen_sequence
+!theme plain
+skinparam backgroundColor #FEFEFE
+
+title dlopen/dlsym/dlclose 调用序列
+
+actor "应用程序" as App
+participant "mini_dlfcn" as dlfcn
+participant "linker" as linker
+participant "elf_parser" as elf
+participant "系统 mmap" as mmap
+participant "系统 libc" as libc
+
+== 加载库 (mini_dlopen) ==
+
+App -> dlfcn: mini_dlopen("lib.so", RTLD_NOW)
+activate dlfcn
+
+dlfcn -> linker: linker_load(path)
+activate linker
+
+linker -> elf: elf_open(path, &elf)
+activate elf
+elf -> elf: elf_validate_header()
+elf --> linker: elf_file_t
+deactivate elf
+
+linker -> linker: calculate_load_size()
+linker -> mmap: mmap(NULL, size, PROT_NONE, ...)
+mmap --> linker: base address
+
+loop 每个 PT_LOAD 段
+    linker -> mmap: mmap(seg_addr, size, prot, MAP_FIXED, ...)
+    mmap --> linker: mapped segment
+end
+
+linker -> linker: parse_dynamic()
+note right: 解析 DT_SYMTAB, DT_STRTAB,\nDT_HASH, DT_RELA 等
+
+linker -> linker: linker_relocate()
+note right: 处理 R_X86_64_RELATIVE,\nR_X86_64_GLOB_DAT,\nR_X86_64_JUMP_SLOT 等
+
+linker --> dlfcn: soinfo_t*
+deactivate linker
+
+dlfcn -> linker: linker_call_constructors(si)
+activate linker
+linker -> linker: DT_INIT()
+linker -> linker: DT_INIT_ARRAY[]()
+linker --> dlfcn:
+deactivate linker
+
+dlfcn --> App: handle (soinfo_t*)
+deactivate dlfcn
+
+== 查找符号 (mini_dlsym) ==
+
+App -> dlfcn: mini_dlsym(handle, "func_name")
+activate dlfcn
+
+alt handle == RTLD_DEFAULT
+    dlfcn -> linker: linker_find_global_symbol(name)
+    activate linker
+    linker -> linker: 遍历 soinfo_list
+    linker -> libc: dlsym(RTLD_DEFAULT, name)
+    libc --> linker: 系统符号地址
+    linker --> dlfcn: symbol address
+    deactivate linker
+else 指定 handle
+    dlfcn -> linker: linker_find_symbol(si, name)
+    activate linker
+    linker -> linker: gnu_lookup() 或 elf_hash()
+    linker --> dlfcn: load_bias + st_value
+    deactivate linker
+end
+
+dlfcn --> App: 函数指针
+deactivate dlfcn
+
+== 调用函数 ==
+
+App -> App: func_ptr(args...)
+note right: 直接调用获取的函数
+
+== 卸载库 (mini_dlclose) ==
+
+App -> dlfcn: mini_dlclose(handle)
+activate dlfcn
+
+dlfcn -> linker: linker_unload(si)
+activate linker
+
+linker -> linker: ref_count--
+
+alt ref_count == 0
+    linker -> linker: linker_call_destructors()
+    linker -> linker: DT_FINI_ARRAY[]() (逆序)
+    linker -> linker: DT_FINI()
+    linker -> mmap: munmap(base, size)
+    linker -> linker: 从链表移除
+end
+
+linker --> dlfcn:
+deactivate linker
+
+dlfcn --> App: 0 (成功)
+deactivate dlfcn
+
+@enduml

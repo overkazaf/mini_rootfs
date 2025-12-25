@@ -1,0 +1,94 @@
+@startuml comparison
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam rectangle {
+    roundCorner 10
+}
+
+title 模拟方案对比: Unicorn vs Unidbg vs Mini Rootfs
+
+rectangle "**Unicorn Engine**" as unicorn #LightCoral {
+    rectangle "特点" as unicorn_features #FFCCCC {
+    }
+    rectangle "缺点" as unicorn_cons #FFDDDD {
+    }
+    rectangle "适用场景" as unicorn_use #FFEEEE {
+    }
+}
+
+note right of unicorn_features
+  - CPU 指令级模拟
+  - 支持多种架构
+  - 高度可控的执行环境
+  - 需要手动实现系统调用
+end note
+
+note right of unicorn_cons
+  - 执行速度较慢
+  - 开发复杂度高
+end note
+
+note right of unicorn_use
+  - 混淆代码分析
+  - 指令级 trace
+  - 完全隔离的沙箱
+end note
+
+rectangle "**Unidbg**" as unidbg #LightGreen {
+    rectangle "特点" as unidbg_features #CCFFCC {
+    }
+    rectangle "缺点" as unidbg_cons #DDFFDD {
+    }
+    rectangle "适用场景" as unidbg_use #EEFFEE {
+    }
+}
+
+note right of unidbg_features
+  - 基于 Unicorn 的高级封装
+  - Java 实现，跨平台
+  - 内置 JNI/系统调用模拟
+  - 丰富的 Hook 机制
+end note
+
+note right of unidbg_cons
+  - 仍依赖 CPU 模拟
+  - Java 环境依赖
+end note
+
+note right of unidbg_use
+  - Android SO 黑盒调用
+  - 协议逆向
+  - 签名算法分析
+end note
+
+rectangle "**Mini Rootfs**" as rootfs #LightBlue {
+    rectangle "特点" as rootfs_features #CCCCFF {
+    }
+    rectangle "缺点" as rootfs_cons #DDDDFF {
+    }
+    rectangle "适用场景" as rootfs_use #EEEEFF {
+    }
+}
+
+note right of rootfs_features
+  - 原生 CPU 执行 (无模拟)
+  - 自定义 ELF 加载器
+  - 最高执行效率
+  - 纯 C 实现，轻量级
+end note
+
+note right of rootfs_cons
+  - 需要相同 CPU 架构
+  - 需自行模拟环境依赖
+end note
+
+note right of rootfs_use
+  - 同架构 SO 快速调用
+  - 性能敏感场景
+  - 服务器部署
+end note
+
+unicorn -[hidden]down-> unidbg
+unidbg -[hidden]down-> rootfs
+
+@enduml

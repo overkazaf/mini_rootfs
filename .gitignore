@@ -1,0 +1,25 @@
+# Build outputs
+out/
+*.o
+*.so
+*.a
+
+# Executables
+mini_linker
+loader
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Claude Code
+.claude/
+
+# macOS
+.DS_Store
+
+# Debug files
+*.dSYM/

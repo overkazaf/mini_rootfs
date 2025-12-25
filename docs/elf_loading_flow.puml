@@ -1,0 +1,78 @@
+@startuml elf_loading_flow
+!theme plain
+skinparam backgroundColor #FEFEFE
+
+title ELF 加载流程 (linker_load)
+
+start
+
+:打开 ELF 文件;
+:elf_open(path, &elf);
+
+if (ELF 魔数验证?) then (失败)
+    :返回错误;
+    stop
+else (成功)
+endif
+
+:验证 ELF 头;
+note right
+  - 检查 64 位格式
+  - 检查小端序
+  - 检查共享库/可执行文件类型
+  - 检查 x86_64 架构
+end note
+
+:分配 soinfo_t 结构;
+
+:遍历 Program Headers\n计算加载大小;
+note right
+  遍历所有 PT_LOAD 段
+  计算 min_vaddr 和 max_vaddr
+  size = max_vaddr - min_vaddr
+end note
+
+:预留内存空间;
+:mmap(NULL, size, PROT_NONE,\n    MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+
+:计算 load_bias;
+note right
+  load_bias = base - min_vaddr
+  用于地址转换
+end note
+
+:遍历并加载 PT_LOAD 段;
+
+partition "加载每个段" {
+    :计算段映射参数;
+    :seg_start = load_bias + p_vaddr;
+
+    :映射文件内容到内存;
+    :mmap(seg_start, filesz,\n    prot, MAP_FIXED, fd, offset);
+
+    if (p_memsz > p_filesz?) then (是)
+        :处理 BSS 段\n(清零 + 匿名映射);
+    else (否)
+    endif
+}
+
+:定位 PT_DYNAMIC 段;
+:解析动态段 (parse_dynamic);
+note right
+  提取以下信息:
+  - DT_SYMTAB: 符号表
+  - DT_STRTAB: 字符串表
+  - DT_HASH/DT_GNU_HASH: 哈希表
+  - DT_RELA/DT_JMPREL: 重定位表
+  - DT_INIT/DT_FINI: 初始化函数
+end note
+
+:执行重定位 (linker_relocate);
+
+:添加到已加载库链表;
+
+:返回 soinfo_t 指针;
+
+stop
+
+@enduml

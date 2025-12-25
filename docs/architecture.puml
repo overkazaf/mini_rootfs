@@ -1,0 +1,82 @@
+@startuml architecture
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam componentStyle rectangle
+
+title Mini Rootfs 整体架构图
+
+package "应用层 (Application Layer)" {
+    [Loader\n(main.c)] as Loader
+    note right of Loader : 用户程序入口\n调用 dlopen/dlsym
+}
+
+package "API 层 (dlfcn API)" {
+    [mini_dlopen()] as dlopen
+    [mini_dlsym()] as dlsym
+    [mini_dlclose()] as dlclose
+    [mini_dlerror()] as dlerror
+}
+
+package "链接器核心 (Linker Core)" {
+    [linker_load()] as linker_load
+    [linker_relocate()] as relocate
+    [linker_find_symbol()] as find_symbol
+    [linker_call_constructors()] as constructors
+    [linker_call_destructors()] as destructors
+}
+
+package "ELF 解析器 (ELF Parser)" {
+    [elf_open()] as elf_open
+    [elf_validate_header()] as validate
+    [elf_find_phdr()] as find_phdr
+    [elf_find_section()] as find_section
+}
+
+package "数据结构 (Data Structures)" {
+    component "soinfo_t" as soinfo {
+    }
+    note bottom of soinfo
+      name, base, load_bias
+      symtab, strtab
+      hash, gnu_hash
+      rela, plt_rela
+      init, fini
+    end note
+
+    component "elf_file_t" as elf_file {
+    }
+    note bottom of elf_file
+      fd, map_start
+      ehdr, phdr, shdr
+    end note
+}
+
+package "系统层 (System Layer)" {
+    [mmap()] as mmap
+    [open() / close()] as file_ops
+    [系统 libc\n(printf, memcpy...)] as libc
+}
+
+' 连接关系
+Loader --> dlopen
+Loader --> dlsym
+Loader --> dlclose
+
+dlopen --> linker_load
+dlopen --> constructors
+dlsym --> find_symbol
+dlclose --> destructors
+
+linker_load --> elf_open
+linker_load --> relocate
+elf_open --> validate
+elf_open --> find_phdr
+
+linker_load --> soinfo : 创建
+elf_open --> elf_file : 填充
+
+linker_load --> mmap : 映射段
+elf_open --> file_ops : 读取 ELF
+find_symbol --> libc : 查找系统符号
+
+@enduml
