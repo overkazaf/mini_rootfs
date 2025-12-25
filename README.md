@@ -120,8 +120,11 @@ nm -D libdemo.so
 
 ```
 mini_rootfs/
+├── Makefile                    # 顶层构建脚本（统一入口）
+├── README.md                   # 本文档
+│
 ├── android/                    # Android 方式实现
-│   ├── Makefile               # 构建脚本
+│   ├── Makefile               # 构建脚本（native/交叉编译）
 │   └── src/
 │       ├── main.c             # 主程序（使用系统 dlopen）
 │       ├── demo.c             # 示例共享库 1
@@ -144,7 +147,26 @@ mini_rootfs/
 │       ├── main.c             # 测试主程序
 │       └── test_lib.c         # 测试共享库
 │
-└── README.md                   # 本文档
+├── demo/                       # Socket 通信演示项目
+│   ├── Makefile               # 构建脚本
+│   └── src/
+│       ├── server.c           # TCP 服务器
+│       ├── client.c           # TCP 客户端
+│       └── protocol.h         # 自定义二进制协议
+│
+└── docs/                       # 文档目录
+```
+
+### 快速开始
+
+```bash
+# 从项目根目录统一编译
+make help             # 查看所有可用命令
+make linux            # 编译 Linux 平台 linker
+make android          # 编译 Android 平台（本地测试）
+make android-cross    # 交叉编译到 Android 设备
+make demo             # 编译 Socket 演示项目
+make clean            # 清理所有构建文件
 ```
 
 ---
