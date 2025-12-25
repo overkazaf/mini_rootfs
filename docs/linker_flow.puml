@@ -1,0 +1,249 @@
+@startuml linker_flow
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam activityBackgroundColor #E3F2FD
+skinparam activityBorderColor #1976D2
+skinparam activityDiamondBackgroundColor #FFF3E0
+skinparam activityDiamondBorderColor #FF9800
+skinparam arrowColor #424242
+skinparam noteBorderColor #9E9E9E
+skinparam noteBackgroundColor #FFFDE7
+
+title **动态链接器 (Linker) 完整流程**
+
+|#LightBlue|用户程序|
+|#LightGreen|Linker 核心|
+|#LightYellow|ELF 解析|
+|#LightPink|内存管理|
+|#LightCoral|符号处理|
+
+|用户程序|
+start
+:调用 dlopen(path, flags);
+
+|Linker 核心|
+:linker_load(path);
+
+|ELF 解析|
+:elf_open(path)
+打开 ELF 文件;
+
+:mmap 映射文件到内存;
+
+:elf_validate_header()
+验证 ELF 魔数: 0x7F ELF;
+
+if (有效的 ELF?) then (yes)
+else (no)
+  :返回错误;
+  stop
+endif
+
+:解析 ELF Header
+- e_type (类型)
+- e_machine (架构)
+- e_phoff (程序头偏移)
+- e_shoff (节头偏移);
+
+:解析 Program Headers
+遍历所有 Phdr;
+
+|内存管理|
+:calculate_load_size()
+计算需要的内存大小;
+
+note right
+  遍历所有 PT_LOAD 段
+  找出 min_vaddr 和 max_vaddr
+  size = max_vaddr - min_vaddr
+end note
+
+:mmap(NULL, size, PROT_NONE)
+预留地址空间;
+
+:计算 load_bias
+load_bias = 实际地址 - 期望地址;
+
+while (遍历 Program Headers) is (还有)
+  if (p_type == PT_LOAD?) then (yes)
+    :计算段地址
+    seg_addr = load_bias + p_vaddr;
+
+    :mmap 映射文件内容
+    - 地址: PAGE_START(seg_addr)
+    - 大小: p_filesz
+    - 权限: p_flags -> mmap prot
+    - 偏移: p_offset;
+
+    if (p_memsz > p_filesz?) then (yes)
+      :memset 清零 BSS 部分;
+    endif
+  elseif (p_type == PT_DYNAMIC?) then (yes)
+    :记录动态段地址
+    dynamic = load_bias + p_vaddr;
+  endif
+endwhile (完成)
+
+|Linker 核心|
+:parse_dynamic(si)
+解析动态段;
+
+|ELF 解析|
+while (遍历 Dynamic 条目) is (d_tag != DT_NULL)
+  switch (d_tag)
+  case (DT_SYMTAB)
+    :si->symtab = d_ptr;
+  case (DT_STRTAB)
+    :si->strtab = d_ptr;
+  case (DT_HASH)
+    :si->hash = d_ptr;
+  case (DT_GNU_HASH)
+    :si->gnu_hash = d_ptr;
+  case (DT_RELA)
+    :si->rela = d_ptr;
+  case (DT_RELASZ)
+    :si->rela_count = d_val / sizeof(Elf64_Rela);
+  case (DT_JMPREL)
+    :si->plt_rela = d_ptr;
+  case (DT_PLTRELSZ)
+    :si->plt_rela_count = d_val / sizeof(Elf64_Rela);
+  case (DT_INIT)
+    :si->init_func = d_ptr;
+  case (DT_FINI)
+    :si->fini_func = d_ptr;
+  case (DT_INIT_ARRAY)
+    :si->init_array = d_ptr;
+  case (DT_FINI_ARRAY)
+    :si->fini_array = d_ptr;
+  case (DT_NEEDED)
+    :记录依赖库名称;
+  endswitch
+endwhile (DT_NULL)
+
+|Linker 核心|
+:linker_relocate(si)
+执行重定位;
+
+|符号处理|
+partition "处理 RELA 重定位" {
+  while (遍历 rela 表) is (还有)
+    :获取重定位信息
+    type = ELF64_R_TYPE(r_info)
+    sym_idx = ELF64_R_SYM(r_info);
+
+    :计算重定位地址
+    reloc_addr = load_bias + r_offset;
+
+    if (sym_idx != 0?) then (yes)
+      :查找符号
+      sym_name = strtab + symtab[sym_idx].st_name;
+      :linker_find_symbol(sym_name);
+
+      note right
+        使用 ELF hash 或 GNU hash
+        在符号表中查找
+      end note
+    endif
+
+    switch (type)
+    case (R_X86_64_64)
+      :*reloc_addr = sym_addr + addend;
+    case (R_X86_64_GLOB_DAT)
+      :*reloc_addr = sym_addr;
+    case (R_X86_64_JUMP_SLOT)
+      :*reloc_addr = sym_addr;
+    case (R_X86_64_RELATIVE)
+      :*reloc_addr = load_bias + addend;
+    case (R_X86_64_COPY)
+      :memcpy(reloc_addr, sym_addr, size);
+    endswitch
+  endwhile (完成)
+}
+
+partition "处理 PLT 重定位" {
+  while (遍历 plt_rela 表) is (还有)
+    :同上处理 JUMP_SLOT 类型;
+  endwhile (完成)
+}
+
+|Linker 核心|
+:linker_call_constructors(si)
+调用初始化函数;
+
+partition "初始化" {
+  if (si->init_func?) then (yes)
+    :调用 DT_INIT 函数;
+  endif
+
+  if (si->init_array?) then (yes)
+    while (遍历 init_array) is (还有)
+      :调用构造函数 init_array[i]();
+    endwhile (完成)
+  endif
+}
+
+note right
+  __attribute__((constructor))
+  标记的函数在此调用
+end note
+
+:返回 soinfo* 句柄;
+
+|用户程序|
+:handle = dlopen() 返回;
+
+:调用 dlsym(handle, "func_name");
+
+|符号处理|
+:linker_find_symbol(si, name)
+在指定库中查找符号;
+
+:计算 hash 值
+使用 ELF hash 或 GNU hash;
+
+:在 hash 表中查找
+bucket -> chain 遍历;
+
+if (找到符号?) then (yes)
+  :返回地址
+  addr = load_bias + sym->st_value;
+else (no)
+  :返回 NULL;
+endif
+
+|用户程序|
+:func_ptr = dlsym() 返回;
+
+:调用 func_ptr();
+
+:调用 dlclose(handle);
+
+|Linker 核心|
+:linker_call_destructors(si);
+
+partition "析构" {
+  if (si->fini_array?) then (yes)
+    while (逆序遍历 fini_array) is (还有)
+      :调用析构函数 fini_array[i]();
+    endwhile (完成)
+  endif
+
+  if (si->fini_func?) then (yes)
+    :调用 DT_FINI 函数;
+  endif
+}
+
+note right
+  __attribute__((destructor))
+  标记的函数在此调用
+end note
+
+|内存管理|
+:munmap 释放内存映射;
+
+:free(si) 释放 soinfo;
+
+|用户程序|
+stop
+
+@enduml
