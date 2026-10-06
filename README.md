@@ -59,6 +59,10 @@
                                                             │
 ```
 
+<div align="center">
+<img src="docs/arch_overview.png" alt="Architecture Overview" width="680"/>
+</div>
+
 ---
 
 ## 目录
@@ -573,6 +577,10 @@ typedef struct soinfo {
     都采用同样的策略
 ```
 
+<div align="center">
+<img src="docs/mem_layout.png" alt="Virtual Memory Layout" width="640"/>
+</div>
+
 **linker.c** - 加载共享库：
 
 > **设计思考：** 两阶段加载策略——先用 `mmap(PROT_NONE)` 预留完整地址范围，再用 `MAP_FIXED` 逐段映射——防止地址碎片化，并保证段间引用（使用相对偏移）始终有效。Linux 内核的 `load_elf_binary()` 和 Android linker 都用同样的方式实现 ASLR 兼容加载。
@@ -801,6 +809,10 @@ int linker_relocate(soinfo_t* si) {
                │
                └──── 回到 "sym_name == 目标符号?"
 ```
+
+<div align="center">
+<img src="docs/sym_resolve.png" alt="Symbol Resolution Flow" width="560"/>
+</div>
 
 ### 4.4 实现 dlopen/dlsym
 
