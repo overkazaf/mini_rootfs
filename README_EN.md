@@ -16,27 +16,9 @@ This project demonstrates how to build a minimal rootfs (root filesystem) with d
 1. **Android approach**: uses the system `dlopen/dlsym` API
 2. **Linux approach**: a from-scratch ELF loader modeled after the Android linker
 
-```mermaid
-graph TB
-    subgraph "mini_rootfs Architecture"
-        direction TB
-        A["ELF Shared Library<br/>.so file"] --> B{Approach}
-        B -->|System API| C["Android Approach<br/>dlopen / dlsym / dlclose"]
-        B -->|From Scratch| D["Custom ELF Loader"]
-        
-        D --> E["① ELF Parser<br/>mmap + validate header"]
-        E --> F["② Segment Mapper<br/>PT_LOAD → mmap MAP_FIXED"]
-        F --> G["③ Dynamic Parser<br/>PT_DYNAMIC → symbol tables"]
-        G --> H["④ Relocator<br/>R_X86_64_* → patch addresses"]
-        H --> I["⑤ Initializer<br/>DT_INIT → DT_INIT_ARRAY"]
-        I --> J["Library Ready<br/>mini_dlsym callable"]
-    end
-    
-    style A fill:#1a1a2e,stroke:#58a6ff,color:#c9d1d9
-    style D fill:#1a1a2e,stroke:#58a6ff,color:#c9d1d9
-    style C fill:#1a1a2e,stroke:#58a6ff,color:#c9d1d9
-    style J fill:#0d2137,stroke:#58a6ff,color:#58a6ff
-```
+<div align="center">
+<img src="docs/arch_overview.svg" alt="Architecture Overview" width="680"/>
+</div>
 
 ---
 
@@ -524,23 +506,9 @@ typedef struct soinfo {
 } soinfo_t;
 ```
 
-```mermaid
-graph LR
-    subgraph "Virtual Address Space"
-        direction TB
-        R1["Reserved Region<br/>mmap(PROT_NONE, load_size)"]
-        R1 --> S1["Segment 1 (R--)<br/>ELF header + rodata<br/>MAP_FIXED"]
-        R1 --> S2["Segment 2 (R-X)<br/>.text code<br/>MAP_FIXED"]
-        R1 --> S3["Segment 3 (RW-)<br/>.data + .bss<br/>MAP_FIXED + memset"]
-    end
-    
-    B["load_bias = actual_base - min_vaddr"] -.-> R1
-    
-    style R1 fill:#1a1a2e,stroke:#58a6ff,color:#c9d1d9
-    style S1 fill:#0d2137,stroke:#4caf50,color:#c9d1d9
-    style S2 fill:#0d2137,stroke:#ef6c00,color:#c9d1d9
-    style S3 fill:#0d2137,stroke:#bf360c,color:#c9d1d9
-```
+<div align="center">
+<img src="docs/mem_layout.svg" alt="Virtual Memory Layout" width="640"/>
+</div>
 
 **linker.c** — loading a shared library:
 
@@ -735,21 +703,9 @@ Common relocation types (x86_64):
 
 Where: S = symbol address, A = addend, B = load_bias
 
-```mermaid
-graph TD
-    A["dlsym(handle, 'func_name')"] --> B["Compute ELF hash"]
-    B --> C["bucket[hash % nbucket]"]
-    C --> D{sym_name == target?}
-    D -->|Yes| E["Return load_bias + st_value"]
-    D -->|No| F["chain[i]"]
-    F --> G{chain[i] == 0?}
-    G -->|No| D
-    G -->|Yes| H["Return NULL<br/>Symbol not found"]
-    
-    style A fill:#1a1a2e,stroke:#58a6ff,color:#c9d1d9
-    style E fill:#0d2137,stroke:#4caf50,color:#4caf50
-    style H fill:#0d2137,stroke:#bf360c,color:#bf360c
-```
+<div align="center">
+<img src="docs/sym_resolve.svg" alt="Symbol Resolution Flow" width="560"/>
+</div>
 
 ### 4.4 Implementing dlopen/dlsym
 
