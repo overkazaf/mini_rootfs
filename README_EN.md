@@ -16,9 +16,50 @@ This project demonstrates how to build a minimal rootfs (root filesystem) with d
 1. **Android approach**: uses the system `dlopen/dlsym` API
 2. **Linux approach**: a from-scratch ELF loader modeled after the Android linker
 
-<div align="center">
-<img src="docs/arch_overview.svg" alt="Architecture Overview" width="680"/>
-</div>
+```
+                         ┌─────────────────────────┐
+                         │   ELF Shared Library     │
+                         │        (.so file)        │
+                         └────────────┬────────────┘
+                                      │
+                        ┌─────────────┴─────────────┐
+                        ▼                           ▼
+              ┌──────────────────┐       ┌──────────────────────┐
+              │  Android Approach│       │  Custom ELF Loader   │
+              │  (System API)    │       │  (~1000 LOC, zero    │
+              │  dlopen/dlsym   │       │   dependencies)      │
+              │  dlclose         │       └──────────┬───────────┘
+              └──────────────────┘                  │
+                                          ┌────────┴────────┐
+                                          ▼                 │
+                                   ① ELF Parser             │
+                                     mmap + validate        │
+                                          │                 │
+                                          ▼                 │
+                                   ② Segment Mapper         │
+                                     PT_LOAD → mmap         │
+                                     MAP_FIXED              │
+                                          │                 │
+                                          ▼                 │
+                                   ③ Dynamic Parser         │
+                                     PT_DYNAMIC →           │
+                                     symbol tables          │
+                                          │                 │
+                                          ▼                 │
+                                   ④ Relocator              │
+                                     R_X86_64_* →           │
+                                     patch addresses        │
+                                          │                 │
+                                          ▼                 │
+                                   ⑤ Initializer            │
+                                     DT_INIT →              │
+                                     DT_INIT_ARRAY          │
+                                          │                 │
+                                          ▼                 │
+                                   ✓ Library Ready          │
+                                     mini_dlsym callable    │
+                                                            │
+```
 
 ---
 
@@ -506,9 +547,34 @@ typedef struct soinfo {
 } soinfo_t;
 ```
 
-<div align="center">
-<img src="docs/mem_layout.svg" alt="Virtual Memory Layout" width="640"/>
-</div>
+```
+  Virtual Address Space — Two-Pass Loading
+  ═════════════════════════════════════════
+
+  Pass 1: mmap(PROT_NONE, load_size)
+  ┌──────────────────────────────────────────────────────────┐
+  │            Reserved Region (no access)                   │
+  │                                                          │
+  └──────────────────────────────────────────────────────────┘
+
+  Pass 2: mmap(MAP_FIXED) per PT_LOAD
+  ┌──────────────────┬───────────────────┬───────────────────┐
+  │   Segment 1      │   Segment 2       │   Segment 3       │
+  │   R-- (readonly) │   R-X (execute)   │   RW- (writable)  │
+  │                  │                   │                   │
+  │   ELF header     │   .text code      │   .data + .bss    │
+  │   .rodata        │                   │   (bss zeroed)    │
+  └──────────────────┴───────────────────┴───────────────────┘
+        ▲
+        │
+  load_bias = actual_base − min_vaddr  (ASLR offset)
+
+  Why two passes?
+  • Single reservation guarantees contiguous address space.
+  • Inter-segment relative offsets stay valid under ASLR.
+  • Same strategy used by Linux kernel's load_elf_binary()
+    and Android's linker.
+```
 
 **linker.c** — loading a shared library:
 
@@ -703,9 +769,41 @@ Common relocation types (x86_64):
 
 Where: S = symbol address, A = addend, B = load_bias
 
-<div align="center">
-<img src="docs/sym_resolve.svg" alt="Symbol Resolution Flow" width="560"/>
-</div>
+```
+  Symbol Resolution — ELF Hash Lookup
+  ════════════════════════════════════
+
+  dlsym(handle, "func_name")
+          │
+          ▼
+  ┌─────────────────────────┐
+  │ Compute ELF hash(name)  │
+  └────────────┬────────────┘
+               │
+               ▼
+  ┌─────────────────────────┐
+  │ i = bucket[hash%nbucket]│
+  └────────────┬────────────┘
+               │
+               ▼
+       ┌───────────────┐    Yes   ┌──────────────────┐
+       │ sym_name ==   │────────▶│ return             │
+       │   target?     │         │ load_bias+st_value │
+       └───────┬───────┘         └──────────────────┘
+               │ No
+               ▼
+       ┌───────────────┐
+       │ i = chain[i]  │
+       └───────┬───────┘
+               │
+               ▼
+       ┌───────────────┐    Yes   ┌──────────────────┐
+       │ chain[i]==0 ? │────────▶│ return NULL        │
+       └───────┬───────┘         │ (not found)        │
+               │ No              └──────────────────┘
+               │
+               └──── loop back to "sym_name == target?"
+```
 
 ### 4.4 Implementing dlopen/dlsym
 
