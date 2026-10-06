@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 520" font-family="'Fira Code','Consolas',monospace">
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#58a6ff"/>
+    </marker>
+  </defs>
+  <rect width="720" height="520" rx="8" fill="#0d1117"/>
+  <text x="360" y="32" fill="#58a6ff" font-size="15" font-weight="bold" text-anchor="middle">mini_rootfs — Architecture Overview</text>
+
+  <!-- ELF .so -->
+  <rect x="280" y="52" width="160" height="36" rx="4" fill="#1a1a2e" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="360" y="75" fill="#c9d1d9" font-size="12" text-anchor="middle">ELF Shared Library (.so)</text>
+
+  <!-- Branch -->
+  <line x1="360" y1="88" x2="360" y2="112" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <rect x="310" y="112" width="100" height="28" rx="4" fill="#1a1a2e" stroke="#6e7681" stroke-width="1"/>
+  <text x="360" y="130" fill="#8b949e" font-size="11" text-anchor="middle">Approach?</text>
+
+  <!-- Left: Android -->
+  <line x1="310" y1="126" x2="160" y2="170" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="210" y="155" fill="#6e7681" font-size="10" text-anchor="middle">System API</text>
+  <rect x="60" y="170" width="200" height="40" rx="4" fill="#0d2137" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="160" y="186" fill="#58a6ff" font-size="12" font-weight="bold" text-anchor="middle">Android Approach</text>
+  <text x="160" y="201" fill="#8b949e" font-size="10" text-anchor="middle">dlopen / dlsym / dlclose</text>
+
+  <!-- Right: Custom -->
+  <line x1="410" y1="126" x2="540" y2="170" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="500" y="155" fill="#6e7681" font-size="10" text-anchor="middle">From Scratch</text>
+  <rect x="440" y="170" width="220" height="40" rx="4" fill="#0d2137" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="550" y="186" fill="#58a6ff" font-size="12" font-weight="bold" text-anchor="middle">Custom ELF Loader</text>
+  <text x="550" y="201" fill="#8b949e" font-size="10" text-anchor="middle">~1000 LOC, zero dependencies</text>
+
+  <!-- Pipeline steps -->
+  <line x1="550" y1="210" x2="550" y2="238" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <rect x="440" y="240" width="220" height="36" rx="4" fill="#1a1a2e" stroke="#4caf50" stroke-width="1.2"/>
+  <text x="460" y="262" fill="#4caf50" font-size="11">①</text>
+  <text x="478" y="262" fill="#c9d1d9" font-size="11">ELF Parser — mmap + validate</text>
+
+  <line x1="550" y1="276" x2="550" y2="290" stroke="#58a6ff" stroke-width="1" marker-end="url(#arrow)"/>
+
+  <rect x="440" y="292" width="220" height="36" rx="4" fill="#1a1a2e" stroke="#ef6c00" stroke-width="1.2"/>
+  <text x="460" y="314" fill="#ef6c00" font-size="11">②</text>
+  <text x="478" y="314" fill="#c9d1d9" font-size="11">Segment Mapper — PT_LOAD</text>
+
+  <line x1="550" y1="328" x2="550" y2="342" stroke="#58a6ff" stroke-width="1" marker-end="url(#arrow)"/>
+
+  <rect x="440" y="344" width="220" height="36" rx="4" fill="#1a1a2e" stroke="#ab47bc" stroke-width="1.2"/>
+  <text x="460" y="366" fill="#ab47bc" font-size="11">③</text>
+  <text x="478" y="366" fill="#c9d1d9" font-size="11">Dynamic Parser — symbols</text>
+
+  <line x1="550" y1="380" x2="550" y2="394" stroke="#58a6ff" stroke-width="1" marker-end="url(#arrow)"/>
+
+  <rect x="440" y="396" width="220" height="36" rx="4" fill="#1a1a2e" stroke="#e53935" stroke-width="1.2"/>
+  <text x="460" y="418" fill="#e53935" font-size="11">④</text>
+  <text x="478" y="418" fill="#c9d1d9" font-size="11">Relocator — patch addresses</text>
+
+  <line x1="550" y1="432" x2="550" y2="446" stroke="#58a6ff" stroke-width="1" marker-end="url(#arrow)"/>
+
+  <rect x="440" y="448" width="220" height="36" rx="4" fill="#1a1a2e" stroke="#ffd54f" stroke-width="1.2"/>
+  <text x="460" y="470" fill="#ffd54f" font-size="11">⑤</text>
+  <text x="478" y="470" fill="#c9d1d9" font-size="11">Initializer — constructors</text>
+
+  <line x1="550" y1="484" x2="550" y2="498" stroke="#58a6ff" stroke-width="1" marker-end="url(#arrow)"/>
+
+  <rect x="470" y="498" width="160" height="16" rx="2" fill="none"/>
+  <text x="550" y="511" fill="#4caf50" font-size="11" font-weight="bold" text-anchor="middle">✓ Library Ready</text>
+</svg>
