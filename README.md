@@ -7,6 +7,7 @@
 
 </div>
 
+中文 | **[English](README_EN.md)**
 
 # Mini Rootfs - 构建自定义动态链接环境
 
