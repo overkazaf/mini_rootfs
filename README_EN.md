@@ -61,6 +61,10 @@ This project demonstrates how to build a minimal rootfs (root filesystem) with d
                                                             │
 ```
 
+<div align="center">
+<img src="docs/arch_overview.png" alt="Architecture Overview" width="680"/>
+</div>
+
 ---
 
 ## Table of Contents
@@ -576,6 +580,10 @@ typedef struct soinfo {
     and Android's linker.
 ```
 
+<div align="center">
+<img src="docs/mem_layout.png" alt="Virtual Memory Layout" width="640"/>
+</div>
+
 **linker.c** — loading a shared library:
 
 > **Design Rationale:** The two-pass loading strategy — first `mmap(PROT_NONE)` to reserve the full address range, then `MAP_FIXED` each PT_LOAD segment — prevents fragmentation and guarantees that inter-segment references (which use relative offsets) remain valid. This is how both the Linux kernel's `load_elf_binary()` and Android's linker handle ASLR-compatible loading.
@@ -804,6 +812,10 @@ Where: S = symbol address, A = addend, B = load_bias
                │
                └──── loop back to "sym_name == target?"
 ```
+
+<div align="center">
+<img src="docs/sym_resolve.png" alt="Symbol Resolution Flow" width="560"/>
+</div>
 
 ### 4.4 Implementing dlopen/dlsym
 
