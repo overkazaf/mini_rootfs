@@ -1,3 +1,13 @@
+<div align="center">
+
+![Stars](https://img.shields.io/github/stars/overkazaf/mini_rootfs?style=flat-square&color=58a6ff)
+![C](https://img.shields.io/badge/C-A8B9CC?style=flat-square&logo=c&logoColor=black)
+![Last Commit](https://img.shields.io/github/last-commit/overkazaf/mini_rootfs?style=flat-square&color=58a6ff)
+![License](https://img.shields.io/github/license/overkazaf/mini_rootfs?style=flat-square&color=58a6ff)
+
+</div>
+
+
 # Mini Rootfs - 构建自定义动态链接环境
 
 本项目演示如何构建一个最小化的 rootfs（根文件系统），实现动态库的加载与调用。项目包含两种实现方式：
