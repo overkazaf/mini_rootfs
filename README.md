@@ -16,6 +16,28 @@
 1. **Android 方式**：使用系统提供的 `dlopen/dlsym` API
 2. **Linux 方式**：从零实现一个自定义的 ELF 加载器（模仿 Android linker）
 
+```mermaid
+graph TB
+    subgraph "mini_rootfs Architecture"
+        direction TB
+        A["ELF Shared Library<br/>.so file"] --> B{Approach}
+        B -->|System API| C["Android Approach<br/>dlopen / dlsym / dlclose"]
+        B -->|From Scratch| D["Custom ELF Loader"]
+        
+        D --> E["① ELF Parser<br/>mmap + validate header"]
+        E --> F["② Segment Mapper<br/>PT_LOAD → mmap MAP_FIXED"]
+        F --> G["③ Dynamic Parser<br/>PT_DYNAMIC → symbol tables"]
+        G --> H["④ Relocator<br/>R_X86_64_* → patch addresses"]
+        H --> I["⑤ Initializer<br/>DT_INIT → DT_INIT_ARRAY"]
+        I --> J["Library Ready<br/>mini_dlsym callable"]
+    end
+    
+    style A fill:#1a1a2e,stroke:#58a6ff,color:#c9d1d9
+    style D fill:#1a1a2e,stroke:#58a6ff,color:#c9d1d9
+    style C fill:#1a1a2e,stroke:#58a6ff,color:#c9d1d9
+    style J fill:#0d2137,stroke:#58a6ff,color:#58a6ff
+```
+
 ---
 
 ## 目录
@@ -54,6 +76,8 @@ rootfs/
 ```
 
 在嵌入式系统或容器环境中，我们经常需要构建最小化的 rootfs。本项目聚焦于 **动态库加载** 这一核心功能。
+
+> **设计思考：** 我们构建的是最小化 rootfs 而非完整系统镜像，因为目标是理解链接器，而非内核。剥离动态加载流程以外的一切，使每个步骤都可以在调试器中独立审计。
 
 ### 1.2 ELF 文件格式
 
@@ -106,6 +130,8 @@ nm -D libdemo.so
 ### 1.3 动态链接原理
 
 动态链接允许程序在运行时加载共享库，而不是在编译时静态链接。
+
+> **设计思考：** 静态链接导致每个二进制文件都包含重复的库副本，且修补后必须重新链接。动态链接以一次性加载开销换取共享内存、更小的二进制体积和热替换能力——这与 Android linker 在内存受限设备上做出的取舍完全一致。
 
 #### 动态链接的关键步骤
 
@@ -366,6 +392,8 @@ make run       # 运行
 
 这种方式从零实现 ELF 加载器，深入理解动态链接原理。
 
+> **设计思考：** 从零构建加载器而非封装 `ld-linux.so`，迫使我们处理系统链接器隐藏的每一个细节：段对齐、load bias 计算、BSS 清零。这也是 Android 团队当初的选择——他们需要一个能在 Bionic 受限环境中运行、不依赖 glibc 的链接器。
+
 ### 4.1 ELF 解析器
 
 **elf_parser.h** - ELF 文件结构定义：
@@ -447,9 +475,13 @@ int elf_open(const char* path, elf_file_t* elf) {
 }
 ```
 
+> **设计思考：** 我们用 `mmap` 将整个文件只读映射，而不是用 `read()` 逐段读取，因为 ELF 头、程序头和节头分散在文件的不同位置。单次映射提供 O(1) 随机访问——`readelf` 和内核自身的 ELF 加载器都采用同样的方式。
+
 ### 4.2 链接器核心
 
 **linker.h** - soinfo 结构（模仿 Android）：
+
+> **设计思考：** `soinfo` 结构刻意模仿 Android linker 的数据结构。日后阅读 AOSP 的 `linker.cpp` 时，你会看到相同的字段（`load_bias`、`dynamic`、`init_array`）。这使得本项目成为真实 linker 研发的跳板，而非纸上谈兵。
 
 ```c
 /* SO 库信息结构 (模仿 Android 的 soinfo) */
@@ -492,7 +524,27 @@ typedef struct soinfo {
 } soinfo_t;
 ```
 
+```mermaid
+graph LR
+    subgraph "Virtual Address Space"
+        direction TB
+        R1["Reserved Region<br/>mmap(PROT_NONE, load_size)"]
+        R1 --> S1["Segment 1 (R--)<br/>ELF header + rodata<br/>MAP_FIXED"]
+        R1 --> S2["Segment 2 (R-X)<br/>.text code<br/>MAP_FIXED"]
+        R1 --> S3["Segment 3 (RW-)<br/>.data + .bss<br/>MAP_FIXED + memset"]
+    end
+    
+    B["load_bias = actual_base - min_vaddr"] -.-> R1
+    
+    style R1 fill:#1a1a2e,stroke:#58a6ff,color:#c9d1d9
+    style S1 fill:#0d2137,stroke:#4caf50,color:#c9d1d9
+    style S2 fill:#0d2137,stroke:#ef6c00,color:#c9d1d9
+    style S3 fill:#0d2137,stroke:#bf360c,color:#c9d1d9
+```
+
 **linker.c** - 加载共享库：
+
+> **设计思考：** 两阶段加载策略——先用 `mmap(PROT_NONE)` 预留完整地址范围，再用 `MAP_FIXED` 逐段映射——防止地址碎片化，并保证段间引用（使用相对偏移）始终有效。Linux 内核的 `load_elf_binary()` 和 Android linker 都用同样的方式实现 ASLR 兼容加载。
 
 ```c
 #include <sys/mman.h>
@@ -568,6 +620,8 @@ error:
 ```
 
 ### 4.3 符号查找与重定位
+
+> **设计思考：** ELF hash 提供 O(1) 均摊的符号查找，而非线性扫描整个符号表。对于导出 500+ 符号的库，这意味着每次 `dlsym` 调用从毫秒级降到微秒级。我们同时实现 ELF hash 和 GNU hash，因为实际的 `.so` 文件可能使用其中任何一种或两者兼有。
 
 **符号查找** - 使用 ELF hash 或 GNU hash：
 
@@ -681,7 +735,25 @@ int linker_relocate(soinfo_t* si) {
 
 其中：S = 符号地址，A = addend，B = load_bias
 
+```mermaid
+graph TD
+    A["dlsym(handle, 'func_name')"] --> B["Compute ELF hash"]
+    B --> C["bucket[hash % nbucket]"]
+    C --> D{sym_name == target?}
+    D -->|Yes| E["Return load_bias + st_value"]
+    D -->|No| F["chain[i]"]
+    F --> G{chain[i] == 0?}
+    G -->|No| D
+    G -->|Yes| H["Return NULL<br/>Symbol not found"]
+    
+    style A fill:#1a1a2e,stroke:#58a6ff,color:#c9d1d9
+    style E fill:#0d2137,stroke:#4caf50,color:#4caf50
+    style H fill:#0d2137,stroke:#bf360c,color:#bf360c
+```
+
 ### 4.4 实现 dlopen/dlsym
+
+> **设计思考：** 将链接器内部实现封装在标准 `dlopen/dlsym/dlclose/dlerror` API 背后，意味着用户代码无需修改——只需将 `#include <dlfcn.h>` 替换为 `#include "mini_dlfcn.h"`，相同的程序就能使用我们的自定义链接器。这一 API 契约也使得本项目可以与第 3 节的 Android 方式直接对比。
 
 **dlfcn.c** - 封装 dlopen API：
 
@@ -764,6 +836,8 @@ void linker_call_destructors(soinfo_t* si) {
     }
 }
 ```
+
+> **设计思考：** 构造函数按 `DT_INIT` → `DT_INIT_ARRAY` 顺序执行，析构函数则反向执行（`DT_FINI_ARRAY` 逆序 → `DT_FINI`）。这种 LIFO 顺序保证库的依赖项在其析构函数运行时仍然存活——C++ 运行时的静态对象析构依赖的正是这一不变量。
 
 ---
 
@@ -879,6 +953,32 @@ factorial(5) = 120
   Test completed successfully!
 ===========================================
 ```
+
+---
+
+## 逆向工程与安全研究中的应用
+
+本项目不仅仅是教学项目——这些技术直接映射到真实的 RE 和安全场景：
+
+### Hook 与 Instrumentation
+- **LD_PRELOAD 式拦截**：替换自定义链接器的符号解析，在加载时重定向函数调用——`libhook` 和 Frida early-init 模式背后的机制完全相同。
+- **GOT/PLT 劫持**：理解重定位类型（`R_X86_64_JUMP_SLOT`、`R_X86_64_GLOB_DAT`）是构建 inline hook 和 GOT patch 的基础。
+
+### 二进制分析
+- **脱壳加固 SO 文件**：商业加固方案（梆梆、爱加密、腾讯乐固）加密 `.text` 段并在加载时解密。理解 PT_LOAD 映射流程，才能在正确的时机 dump 解密后的段。
+- **反调试绕过**：部分保护方案 hook `dlopen` 来检测 instrumentation。自定义链接器绕过了整个检测面。
+
+### 沙箱与模拟
+- **unidbg / Unicorn 集成**：模拟执行 Android native 代码时，需要复现链接器行为——段映射、重定位、构造函数调用。本项目的 `linker_load()` 是一个最小参考实现。
+- **无 Root 分析环境**：配合 `sidecar`（user namespace chroot），本链接器可以在隔离环境中无 Root 加载和执行 `.so` 文件——适用于恶意软件分析和 fuzzing。
+
+### DRM 与内容保护研究
+- **CDM 库加载**：理解 Chrome 如何加载 `libwidevinecdm.so`（通过 `dlopen` 配合自定义符号解析），需要的正是本项目传授的知识。
+- **定制加载器用于 instrumented 库**：修改目标 `.so` 的重定位来拦截 DRM 密钥交换函数。
+
+### CTF 与漏洞利用
+- **Return-to-PLT / ret2dlresolve**：这些利用技术操纵动态链接器的重定位结构。亲手实现过 `do_reloc()` 后，这些攻击方式会变得直觉而非魔法。
+- **RELRO 绕过**：理解 `PT_GNU_RELRO` 以及重定位何时完成，对于在 partial RELRO 下攻击 GOT 至关重要。
 
 ---
 
