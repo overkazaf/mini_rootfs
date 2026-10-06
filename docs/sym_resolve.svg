@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 420" font-family="'Fira Code','Consolas',monospace">
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#58a6ff"/>
+    </marker>
+    <marker id="arr-green" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#4caf50"/>
+    </marker>
+    <marker id="arr-red" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#e53935"/>
+    </marker>
+  </defs>
+  <rect width="600" height="420" rx="8" fill="#0d1117"/>
+  <text x="300" y="28" fill="#58a6ff" font-size="14" font-weight="bold" text-anchor="middle">Symbol Resolution — ELF Hash Lookup</text>
+
+  <!-- Step 1: dlsym call -->
+  <rect x="170" y="48" width="260" height="32" rx="4" fill="#0d2137" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="300" y="68" fill="#58a6ff" font-size="11" text-anchor="middle">dlsym(handle, "func_name")</text>
+
+  <line x1="300" y1="80" x2="300" y2="100" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Step 2: Compute hash -->
+  <rect x="190" y="102" width="220" height="32" rx="4" fill="#1a1a2e" stroke="#ab47bc" stroke-width="1.2"/>
+  <text x="300" y="122" fill="#c9d1d9" font-size="11" text-anchor="middle">Compute ELF hash(name)</text>
+
+  <line x1="300" y1="134" x2="300" y2="154" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Step 3: Bucket -->
+  <rect x="180" y="156" width="240" height="32" rx="4" fill="#1a1a2e" stroke="#ef6c00" stroke-width="1.2"/>
+  <text x="300" y="176" fill="#c9d1d9" font-size="11" text-anchor="middle">i = bucket[hash % nbucket]</text>
+
+  <line x1="300" y1="188" x2="300" y2="208" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Step 4: Compare -->
+  <rect x="195" y="210" width="210" height="36" rx="18" fill="#1a1a2e" stroke="#ffd54f" stroke-width="1.2"/>
+  <text x="300" y="232" fill="#ffd54f" font-size="11" text-anchor="middle">sym_name == target?</text>
+
+  <!-- Yes branch -->
+  <line x1="405" y1="228" x2="470" y2="228" stroke="#4caf50" stroke-width="1.5" marker-end="url(#arr-green)"/>
+  <text x="434" y="222" fill="#4caf50" font-size="10">Yes</text>
+  <rect x="472" y="212" width="120" height="32" rx="4" fill="#0d2137" stroke="#4caf50" stroke-width="1.5"/>
+  <text x="532" y="226" fill="#4caf50" font-size="10" text-anchor="middle">return</text>
+  <text x="532" y="238" fill="#4caf50" font-size="9" text-anchor="middle">bias + st_value</text>
+
+  <!-- No branch -->
+  <line x1="300" y1="246" x2="300" y2="272" stroke="#e53935" stroke-width="1.2" marker-end="url(#arr)"/>
+  <text x="312" y="262" fill="#e53935" font-size="10">No</text>
+
+  <!-- Step 5: Chain -->
+  <rect x="200" y="274" width="200" height="32" rx="4" fill="#1a1a2e" stroke="#6e7681" stroke-width="1.2"/>
+  <text x="300" y="294" fill="#c9d1d9" font-size="11" text-anchor="middle">i = chain[i]</text>
+
+  <line x1="300" y1="306" x2="300" y2="326" stroke="#58a6ff" stroke-width="1.2" marker-end="url(#arr)"/>
+
+  <!-- Step 6: Check chain end -->
+  <rect x="215" y="328" width="170" height="32" rx="16" fill="#1a1a2e" stroke="#ffd54f" stroke-width="1.2"/>
+  <text x="300" y="348" fill="#ffd54f" font-size="11" text-anchor="middle">chain[i] == 0?</text>
+
+  <!-- Loop back -->
+  <line x1="215" y1="344" x2="140" y2="344" stroke="#58a6ff" stroke-width="1" stroke-dasharray="4,3"/>
+  <line x1="140" y1="344" x2="140" y2="228" stroke="#58a6ff" stroke-width="1" stroke-dasharray="4,3"/>
+  <line x1="140" y1="228" x2="195" y2="228" stroke="#58a6ff" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arr)"/>
+  <text x="130" y="288" fill="#6e7681" font-size="9" text-anchor="middle">No</text>
+
+  <!-- Not found -->
+  <line x1="300" y1="360" x2="300" y2="386" stroke="#e53935" stroke-width="1.2" marker-end="url(#arr-red)"/>
+  <text x="312" y="376" fill="#e53935" font-size="10">Yes</text>
+  <rect x="220" y="388" width="160" height="26" rx="4" fill="#0d2137" stroke="#e53935" stroke-width="1.2"/>
+  <text x="300" y="405" fill="#e53935" font-size="11" text-anchor="middle">return NULL</text>
+</svg>
