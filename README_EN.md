@@ -16,6 +16,28 @@ This project demonstrates how to build a minimal rootfs (root filesystem) with d
 1. **Android approach**: uses the system `dlopen/dlsym` API
 2. **Linux approach**: a from-scratch ELF loader modeled after the Android linker
 
+```mermaid
+graph TB
+    subgraph "mini_rootfs Architecture"
+        direction TB
+        A["ELF Shared Library<br/>.so file"] --> B{Approach}
+        B -->|System API| C["Android Approach<br/>dlopen / dlsym / dlclose"]
+        B -->|From Scratch| D["Custom ELF Loader"]
+        
+        D --> E["① ELF Parser<br/>mmap + validate header"]
+        E --> F["② Segment Mapper<br/>PT_LOAD → mmap MAP_FIXED"]
+        F --> G["③ Dynamic Parser<br/>PT_DYNAMIC → symbol tables"]
+        G --> H["④ Relocator<br/>R_X86_64_* → patch addresses"]
+        H --> I["⑤ Initializer<br/>DT_INIT → DT_INIT_ARRAY"]
+        I --> J["Library Ready<br/>mini_dlsym callable"]
+    end
+    
+    style A fill:#1a1a2e,stroke:#58a6ff,color:#c9d1d9
+    style D fill:#1a1a2e,stroke:#58a6ff,color:#c9d1d9
+    style C fill:#1a1a2e,stroke:#58a6ff,color:#c9d1d9
+    style J fill:#0d2137,stroke:#58a6ff,color:#58a6ff
+```
+
 ---
 
 ## Table of Contents
@@ -54,6 +76,8 @@ rootfs/
 ```
 
 In embedded systems and container environments, building a minimal rootfs is a common requirement. This project focuses on one core piece: **dynamic library loading**.
+
+> **Design Rationale:** We target a minimal rootfs rather than a full OS image because the goal is to understand the linker, not the kernel. Stripping away everything except the dynamic loading pipeline isolates the mechanism and makes each step auditable in a debugger.
 
 ### 1.2 The ELF File Format
 
@@ -106,6 +130,8 @@ nm -D libdemo.so
 ### 1.3 How Dynamic Linking Works
 
 Dynamic linking defers library loading to runtime instead of embedding everything at compile time.
+
+> **Design Rationale:** Static linking bloats every binary with duplicate library copies and makes patching impossible without relinking. Dynamic linking trades a one-time load cost for shared memory, smaller binaries, and hot-swappable libraries — the same tradeoff the Android linker optimizes for on memory-constrained devices.
 
 #### The Linking Pipeline
 
@@ -366,6 +392,8 @@ make run       # Run
 
 This approach builds an ELF loader from scratch, exposing the full dynamic linking pipeline.
 
+> **Design Rationale:** Building the loader from scratch instead of wrapping `ld-linux.so` forces us to handle every detail the system linker hides: segment alignment, load bias computation, BSS zeroing. This is the same path the Android team took when they needed a linker that could run in Bionic's constrained environment without glibc.
+
 ### 4.1 ELF Parser
 
 **elf_parser.h** — ELF file structure:
@@ -447,9 +475,13 @@ int elf_open(const char* path, elf_file_t* elf) {
 }
 ```
 
+> **Design Rationale:** We `mmap` the entire file read-only rather than using `read()` because the ELF header, program headers, and section headers are scattered across the file. A single mapping gives O(1) random access to any offset — the same approach used by `readelf` and the kernel's own ELF loader.
+
 ### 4.2 Linker Core
 
 **linker.h** — the soinfo struct (modeled after Android's linker):
+
+> **Design Rationale:** The `soinfo` struct mirrors Android's linker data structure intentionally. Anyone who later reads AOSP's `linker.cpp` will recognize the same fields (`load_bias`, `dynamic`, `init_array`). This makes the project a stepping stone to real linker hacking, not just an academic exercise.
 
 ```c
 /* Loaded library descriptor (mirrors Android's soinfo) */
@@ -492,7 +524,27 @@ typedef struct soinfo {
 } soinfo_t;
 ```
 
+```mermaid
+graph LR
+    subgraph "Virtual Address Space"
+        direction TB
+        R1["Reserved Region<br/>mmap(PROT_NONE, load_size)"]
+        R1 --> S1["Segment 1 (R--)<br/>ELF header + rodata<br/>MAP_FIXED"]
+        R1 --> S2["Segment 2 (R-X)<br/>.text code<br/>MAP_FIXED"]
+        R1 --> S3["Segment 3 (RW-)<br/>.data + .bss<br/>MAP_FIXED + memset"]
+    end
+    
+    B["load_bias = actual_base - min_vaddr"] -.-> R1
+    
+    style R1 fill:#1a1a2e,stroke:#58a6ff,color:#c9d1d9
+    style S1 fill:#0d2137,stroke:#4caf50,color:#c9d1d9
+    style S2 fill:#0d2137,stroke:#ef6c00,color:#c9d1d9
+    style S3 fill:#0d2137,stroke:#bf360c,color:#c9d1d9
+```
+
 **linker.c** — loading a shared library:
+
+> **Design Rationale:** The two-pass loading strategy — first `mmap(PROT_NONE)` to reserve the full address range, then `MAP_FIXED` each PT_LOAD segment — prevents fragmentation and guarantees that inter-segment references (which use relative offsets) remain valid. This is how both the Linux kernel's `load_elf_binary()` and Android's linker handle ASLR-compatible loading.
 
 ```c
 #include <sys/mman.h>
@@ -568,6 +620,8 @@ error:
 ```
 
 ### 4.3 Symbol Lookup and Relocation
+
+> **Design Rationale:** ELF hash gives O(1) amortized symbol lookup instead of scanning the entire symbol table linearly. For a library with 500+ exports, this is the difference between microseconds and milliseconds per `dlsym` call. We implement both ELF hash and GNU hash because real-world `.so` files use either or both.
 
 **Symbol lookup** — using ELF hash or GNU hash:
 
@@ -681,7 +735,25 @@ Common relocation types (x86_64):
 
 Where: S = symbol address, A = addend, B = load_bias
 
+```mermaid
+graph TD
+    A["dlsym(handle, 'func_name')"] --> B["Compute ELF hash"]
+    B --> C["bucket[hash % nbucket]"]
+    C --> D{sym_name == target?}
+    D -->|Yes| E["Return load_bias + st_value"]
+    D -->|No| F["chain[i]"]
+    F --> G{chain[i] == 0?}
+    G -->|No| D
+    G -->|Yes| H["Return NULL<br/>Symbol not found"]
+    
+    style A fill:#1a1a2e,stroke:#58a6ff,color:#c9d1d9
+    style E fill:#0d2137,stroke:#4caf50,color:#4caf50
+    style H fill:#0d2137,stroke:#bf360c,color:#bf360c
+```
+
 ### 4.4 Implementing dlopen/dlsym
+
+> **Design Rationale:** Wrapping the linker internals behind the standard `dlopen/dlsym/dlclose/dlerror` API means user code doesn't need to change — swap `#include <dlfcn.h>` for `#include "mini_dlfcn.h"` and the same program works with our custom linker. This API contract also makes the project directly comparable to the Android approach in Section 3.
 
 **dlfcn.c** — the dlopen API wrapper:
 
@@ -764,6 +836,8 @@ void linker_call_destructors(soinfo_t* si) {
     }
 }
 ```
+
+> **Design Rationale:** Constructors run in `DT_INIT` → `DT_INIT_ARRAY` order, but destructors run in reverse (`DT_FINI_ARRAY` reversed → `DT_FINI`). This LIFO ordering ensures that a library's dependencies are still alive when its destructor runs — the same invariant the C++ runtime relies on for static object destruction.
 
 ---
 
@@ -879,6 +953,32 @@ factorial(5) = 120
   Test completed successfully!
 ===========================================
 ```
+
+---
+
+## Use Cases in Reverse Engineering & Security
+
+This project isn't just educational — the techniques map directly to real-world RE and security scenarios:
+
+### Hooking & Instrumentation
+- **LD_PRELOAD-style interception**: Replace the custom linker's symbol resolution to redirect function calls at load time — the same mechanism behind tools like `libhook` and Frida's early-init mode.
+- **GOT/PLT hijacking**: Understanding relocation types (`R_X86_64_JUMP_SLOT`, `R_X86_64_GLOB_DAT`) is essential for building inline hooks that patch the GOT to redirect API calls.
+
+### Binary Analysis
+- **Unpacking obfuscated SO files**: Commercial packers (Bangcle, Ijiami, Tencent Legu) encrypt `.text` segments and decrypt at load time. Understanding the PT_LOAD mapping pipeline lets you dump the decrypted segments at the right moment.
+- **Anti-debugging bypass**: Some protections hook `dlopen` to detect instrumentation. A custom linker sidesteps the entire detection surface.
+
+### Sandbox & Emulation
+- **unidbg / Unicorn integration**: When emulating Android native code, you need to replicate the linker's behavior — segment mapping, relocation, constructor calls. This project's `linker_load()` is a minimal reference implementation.
+- **Rootless analysis environments**: Combined with `sidecar` (user-namespace chroot), this linker can load and execute `.so` files in isolated environments without root — useful for malware analysis and fuzzing.
+
+### DRM & Content Protection Research
+- **CDM library loading**: Understanding how Chrome loads `libwidevinecdm.so` (via `dlopen` with custom symbol resolution) requires exactly the knowledge this project teaches.
+- **Custom loader for instrumented libraries**: Rebuild a target `.so` with modified relocations to intercept DRM key exchange functions.
+
+### CTF & Exploit Development
+- **Return-to-PLT / ret2dlresolve**: These exploit techniques manipulate the dynamic linker's relocation structures. Hands-on experience with `do_reloc()` makes these attacks intuitive rather than magical.
+- **RELRO bypass**: Understanding `PT_GNU_RELRO` and when relocations are finalized is critical for exploits that target the GOT after partial RELRO.
 
 ---
 
